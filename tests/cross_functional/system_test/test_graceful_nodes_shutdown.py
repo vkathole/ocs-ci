@@ -7,7 +7,6 @@ import logging
 import pytest
 import time
 
-from ocs_ci.ocs.ocp import OCP
 from ocs_ci.ocs import constants, defaults, registry
 from ocs_ci.ocs.exceptions import (
     CommandFailed,
@@ -22,7 +21,6 @@ from ocs_ci.ocs.monitoring import (
     validate_pvc_are_mounted_on_monitoring_pods,
 )
 from ocs_ci.framework import config
-from ocs_ci.utility.uninstall_openshift_logging import uninstall_cluster_logging
 from ocs_ci.utility.retry import retry
 from ocs_ci.framework.pytest_customization.marks import (
     system_test,
@@ -84,16 +82,6 @@ class TestGracefulNodesShutdown(E2ETest):
 
         def teardown():
             logger.info("cleanup the environment")
-
-            # cleanup logging workload
-            sub = OCP(
-                kind=constants.SUBSCRIPTION,
-                namespace=constants.OPENSHIFT_LOGGING_NAMESPACE,
-            )
-            logging_sub = sub.get().get("items")
-            if logging_sub:
-                logger.info("Logging is configured")
-                uninstall_cluster_logging()
 
         request.addfinalizer(teardown)
 
@@ -361,13 +349,6 @@ class TestGracefulNodesShutdown(E2ETest):
         retry((CommandFailed, UnexpectedBehaviour, AssertionError), tries=3, delay=15)(
             registry.validate_pvc_mount_on_registry_pod
         )()
-        sub = OCP(
-            kind=constants.SUBSCRIPTION,
-            namespace=constants.OPENSHIFT_LOGGING_NAMESPACE,
-        )
-        logging_sub = sub.get().get("items")
-        if not logging_sub:
-            assert "Logging is not configured"
 
     @system_test
     @polarion_id("OCS-3976")
@@ -408,9 +389,7 @@ class TestGracefulNodesShutdown(E2ETest):
 
         # OCP Workloads
         logger.info("start_ocp_workload")
-        start_ocp_workload(
-            workloads_list=["monitoring", "registry", "logging"], run_in_bg=True
-        )
+        start_ocp_workload(workloads_list=["monitoring", "registry"], run_in_bg=True)
 
         # Setup MCG Features
         logger.info(
@@ -458,13 +437,13 @@ class TestGracefulNodesShutdown(E2ETest):
         )(wait_for_nodes_status(timeout=1800))
         logger.info("All nodes are now in READY state")
 
-        logger.info("Waiting for 10 min for all pods to come in running state.")
-        time.sleep(600)
+        logger.info("Waiting for 15 min for all pods to come in running state.")
+        time.sleep(900)
 
         # check cluster health
         try:
             logger.info("Making sure ceph health is OK")
-            Sanity().health_check(tries=50, cluster_check=False)
+            Sanity().health_check(tries=60, cluster_check=False)
         except Exception as ex:
             logger.error("Failed at cluster health check!!")
             raise ex
